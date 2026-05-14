@@ -67,6 +67,14 @@
    GROUP BY name ORDER BY total_ns DESC LIMIT 10"
 ```
 
+### 4. HTTP query 服务 demo（验证「服务端嵌 TP + 客户端发 SQL」）
+
+内嵌同一套 Trace Processor，在本地起 HTTP **`POST /query`**（body 为 SQL），返回 JSON，便于用 `curl` / Python 模拟客户端。
+
+**若不想用 HTTP**：同一套 JSON 结果可用**纯本地** `query_local_demo`（命令行 / 子进程 stdout，无端口）。
+
+详见 [`embed_demo/README_query_http_demo.md`](embed_demo/README_query_http_demo.md)。构建 `./embed_demo/build.sh` 会产出 `query_http_demo` 与 `query_local_demo`。
+
 ## 关于离线运行
 
 - `./trace_processor` 是 Python 启动器，首次运行需要联网下载二进制到
@@ -78,22 +86,38 @@
 
 ## 重新构建 `embed_demo`
 
+首次构建前需要 **Perfetto 预编译 gn/ninja**（以及后续编译所需的 protobuf 等）。
+若 `perfetto/third_party/gn/gn` 不存在，脚本会自动执行（需联网）：
+
 ```bash
-# 首次完整构建（首次约 1~2 分钟，需要 gn gen + 编译 ~1700 个 TU + 链接）
+(cd perfetto && python3 tools/install-build-deps --no-dev-tools)
+```
+
+不加 `--ui` 即不拉 Node/Web UI 依赖；若需构建 Perfetto UI 再加 `--ui`。当前上游已移除 `--no-ui` 参数，勿再使用。
+
+也可在本机先装好再构建：`PERFETTO_FETCH_DEPS=0 ./embed_demo/build.sh`（缺少依赖时会直接报错退出）。
+
+```bash
+# 首次完整构建（编译量大，请耐心等待）
 ./embed_demo/build.sh
 
-# 改完 main.cpp 增量构建（5~10 秒）
+# 改完 main.cpp 增量构建（通常几秒～几十秒）
 ./embed_demo/build.sh
 
 # 清理重建
 ./embed_demo/build.sh clean
+
+# 指定 Perfetto 源码目录 / GN 参数（可选）
+PERFETTO_SRC=/path/to/perfetto ./embed_demo/build.sh
+PERFETTO_GN_ARGS='is_debug=false is_clang=false' ./embed_demo/build.sh
 ```
 
 构建脚本会：
 
-1. 调用 `tools/gn gen out/release --args='is_debug=false is_clang=true'`
-2. 调用 `tools/ninja -C out/release embed_demo`
-3. 在 `embed_demo/embed_demo` 处建立符号链接指向产物
+1. 优先使用 `third_party/gn/gn` 与 `third_party/ninja/ninja`（直接调用二进制，**不再**依赖已损坏的 `tools/gn` Python 包装器在「无预编译」时的 `execl` 失败）。
+2. 无 hermetic clang 时默认 `--args='is_debug=false is_clang=false'`，否则会使用 `is_clang=true`。
+3. 调用 `ninja -C out/release embed_demo`
+4. 在 `embed_demo/embed_demo` 处建立符号链接指向产物。`BUILD.gn` 位于 `perfetto/embed_demo/`，源码为上一级的 `embed_demo/main.cpp`。
 
 依赖关系：`//embed_demo:embed_demo`
 → `//src/trace_processor:trace_processor`（一个 `complete_static_lib`，把
