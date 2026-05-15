@@ -16,7 +16,7 @@
 #   ./build.sh                    # incremental build
 #   ./build.sh clean              # nuke out/ and rebuild from scratch
 #   PERFETTO_SRC=/path/to/perfetto ./build.sh   # override tree location
-#   PERFETTO_GN_ARGS='is_debug=false is_clang=false' ./build.sh  # force GCC
+#   PERFETTO_GN_ARGS='is_debug=false is_clang=false extra_cxxflags="-Wno-dangling-reference"' ./build.sh
 
 set -euo pipefail
 
@@ -70,13 +70,7 @@ default_gn_args() {
     echo "$PERFETTO_GN_ARGS"
     return
   fi
-  # Hermetic clang appears after install-build-deps; without it use system GCC.
-  if [[ -f "$PERFETTO_DIR/buildtools/linux64/clang/bin/clang" ]] ||
-     [[ -f "$PERFETTO_DIR/third_party/llvm-build/Release+Asserts/bin/clang" ]]; then
-    echo "is_debug=false is_clang=true"
-  else
-    echo "is_debug=false is_clang=false"
-  fi
+  echo "is_debug=false is_clang=false extra_cflags=\"-Wno-comment -Wno-array-bounds\" extra_cxxflags=\"-Wno-dangling-reference -Wno-array-bounds -Wno-comment\""
 }
 
 if [[ "${1:-}" == "clean" ]]; then
@@ -101,12 +95,10 @@ fi
 
 cd "$PERFETTO_DIR"
 
-# 1) Generate ninja files (idempotent).
-if [[ ! -f "$OUT_DIR/build.ninja" ]]; then
-  echo ">>> gn gen $OUT_DIR  ($(default_gn_args))"
-  mkdir -p "$OUT_DIR"
-  "$GN" gen "$OUT_DIR" --args="$(default_gn_args)"
-fi
+# 1) Regenerate ninja files (applies updated default_gn_args, e.g. GCC -Wno flags).
+echo ">>> gn gen $OUT_DIR  ($(default_gn_args))"
+mkdir -p "$OUT_DIR"
+"$GN" gen "$OUT_DIR" --args="$(default_gn_args)"
 
 # 2) Build embed demos (pulls in libtrace_processor.a).
 echo ">>> ninja embed_demo query_http_demo query_local_demo (first run can take several minutes)"
